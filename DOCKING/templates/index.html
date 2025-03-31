@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RabbitMQ Web Viewer</title>
+    <style>
+        body { font-family: sans-serif; margin: 20px; background-color: #f4f4f4; }
+        h1 { color: #333; }
+        #messages { list-style: none; padding: 0; margin-top: 20px; background-color: #fff; border: 1px solid #ddd; border-radius: 4px; min-height: 200px; padding: 15px;}
+        #messages li { padding: 8px 12px; border-bottom: 1px dashed #eee; }
+        #messages li:last-child { border-bottom: none; }
+        .status { margin-top: 10px; font-size: 0.9em; color: #666; }
+        .message-time { font-size: 0.8em; color: #999; margin-left: 10px; }
+    </style>
+</head>
+<body>
+    <h1>Повідомлення з черги RabbitMQ: "{{ queue_name }}" (SSE Channel: "{{ sse_channel_name }}") на хості "{{ rabbitmq_host }}"</h1>
+    <ul id="messages">
+        </ul>
+    <div class="status" id="connection-status">Статус SSE: ініціалізація...</div>
+
+    <script>
+        const messagesList = document.getElementById('messages');
+        const statusDiv = document.getElementById('connection-status');
+        // *** ЗМІНЕНО ТУТ: Використовуємо реальний канал, переданий з Flask ***
+        const sseChannelName = "{{ sse_channel_name }}";
+        console.log(">>> Using SSE channel:", sseChannelName); // Додамо лог каналу
+
+        function addMessage(messageText) {
+            const listItem = document.createElement('li');
+            listItem.textContent = messageText;
+            const timeSpan = document.createElement('span');
+            timeSpan.className = 'message-time';
+            timeSpan.textContent = `(${new Date().toLocaleTimeString()})`;
+            listItem.appendChild(timeSpan);
+            messagesList.insertBefore(listItem, messagesList.firstChild);
+        }
+
+        console.log(">>> Initializing EventSource...");
+        statusDiv.textContent = 'Статус SSE: підключення...';
+        const eventSource = new EventSource(`/stream`); // URL залишається той самий
+
+        eventSource.onopen = function(event) {
+            statusDiv.textContent = 'Статус SSE: Підключено';
+            statusDiv.style.color = 'green';
+            console.log(">>> SSE Connection opened (onopen event fired). Event:", event);
+        };
+
+        eventSource.addEventListener('new_message', function(event) {
+            console.log(">>> Received 'new_message' event object:", event);
+            console.log(">>> Raw data received:", event.data);
+            try {
+                const data = JSON.parse(event.data);
+                 console.log(">>> Parsed data:", data);
+                if (data && data.message !== undefined) {
+                    addMessage(data.message);
+                } else {
+                    console.warn("Received event, but no 'message' key found in parsed data or data is null:", data);
+                }
+            } catch (e) {
+                console.error(">>> Failed to parse SSE data:", e);
+                if (event.data && event.data.trim() !== "") {
+                   addMessage(`Помилка парсингу: ${event.data}`);
+                } else {
+                   console.warn(">>> Received empty or non-parseable data.");
+                }
+            }
+        });
+
+        eventSource.onerror = function(errorEvent) {
+            statusDiv.textContent = 'Статус SSE: Помилка (onerror fired)';
+            statusDiv.style.color = 'red';
+            console.error(">>> EventSource onerror event fired. ReadyState:", eventSource.readyState, "Event object:", errorEvent);
+        };
+
+        console.log(">>> EventSource setup complete. Initial readyState:", eventSource.readyState);
+    </script>
+</body>
+</html>

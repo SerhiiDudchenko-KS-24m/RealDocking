@@ -1,0 +1,60 @@
+version: '3.8'
+
+services:
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: rabbitmq_broker
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq/
+    healthcheck:
+        test: ["CMD", "rabbitmqctl", "status"]
+        interval: 10s
+        timeout: 5s
+        retries: 5
+
+  # *** Доданий сервіс Redis ***
+  redis:
+    image: redis:alpine
+    container_name: redis_cache
+    # ports: # Порт можна не відкривати, якщо доступ потрібен тільки всередині Docker
+    #   - "6379:6379"
+    volumes:
+      - redis_data:/data # Збереження даних Redis
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 2s
+      retries: 5
+
+  web_service:
+    build: .
+    container_name: rabbitmq_web_viewer
+    ports:
+      - "5001:5000"
+    environment:
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+      RABBITMQ_QUEUE: my_message_queue
+      RABBITMQ_USER: guest
+      RABBITMQ_PASS: guest
+      FLASK_DEBUG: "False"
+      # *** Вказуємо URL для Redis, щоб app.py міг його отримати ***
+      REDIS_URL: "redis://redis:6379/0"
+      PYTHONUNBUFFERED: 1 # Для негайного виводу логів
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      # *** Додаємо залежність від Redis ***
+      redis:
+        condition: service_healthy
+
+volumes:
+  rabbitmq_data:
+  # *** Додаємо том для даних Redis ***
+  redis_data:
